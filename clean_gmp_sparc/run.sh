@@ -1,6 +1,6 @@
 cd src
 make clean
-make
+make -j
 cd ..
 cp ./lib/gmp ./test
 cd ./test
