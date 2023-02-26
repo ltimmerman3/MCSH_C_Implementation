@@ -84,10 +84,10 @@ int main(int argc, char **argv){
 
     FILE *fptr;
     fptr = fopen("num_out.txt","w");
-    for (int i=0; i < 108; i++){
-        for (int j=0; j < 15; j++){
+    for (int i=0; i < gmp_str->natom; i++){
+        for (int j=0; j < gmp_str->nmcsh; j++){
             fprintf(fptr,"%d,%d,%f",i,j,gmp_str->X[i][j]);
-            for (int k=0; k<108; k++){
+            for (int k=0; k<gmp_str->natom; k++){
                 fprintf(fptr,",%f,%f,%f",gmp_str->dX_dX[i][k][j],gmp_str->dX_dY[i][k][j],gmp_str->dX_dZ[i][k][j]);
             }
             fprintf(fptr,"\n");

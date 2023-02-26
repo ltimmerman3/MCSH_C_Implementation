@@ -877,9 +877,24 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
                 gmp_str->X[ii][m] = sum_square;
             }
             else {
-                gmp_str->X[ii][m] = sqrt(sum_square);
+                double temp = sqrt(sum_square);
+                if (abs(temp) < 1e-2){
+                    gmp_str->X[ii][m] = 0.0;
+                    for (int j = 0; j < nneigh; ++j) {
+                        gmp_str->dX_dX[ii][3*j][m] = 0.0;
+                        gmp_str->dX_dY[ii][3*j+1][m] = 0.0;
+                        gmp_str->dX_dZ[ii][3*j+2][m] = 0.0;
+                    }
+                }
+                else {
+                    gmp_str->X[ii][m] = temp;
+                    for (int j=0; j < gmp_str->natom; j++){
+                        gmp_str->dX_dX[ii][3*j][m] *= 0.5/temp;
+                        gmp_str->dX_dY[ii][3*j+1][m] *= 0.5/temp;
+                        gmp_str->dX_dZ[ii][3*j+2][m] *= 0.5/temp;
+                    }
+                }
             }
-
         }
     }
 
