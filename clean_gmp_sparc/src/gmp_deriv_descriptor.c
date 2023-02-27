@@ -438,7 +438,9 @@ void initialize_gmpObj(GMPObj *gmp_str, NeighList *nlist, int *cal_atoms, int ca
 			gmp_str->X[i][sz] = 0.0;
 		}
 
-		int uniq_natms = uniqueEle((nlist->neighborList[i]).array, nlist->Nneighbors[i]);
+		//int uniq_natms = uniqueEle((nlist->neighborList[i]).array, nlist->Nneighbors[i]);
+        // Add 1 to account for the atom itself - can have descriptor derivative arrays of varying sizes
+        int uniq_natms = nlist->unique_Nneighbors[i] + 1;
 		gmp_str->dX_dX[i] = (double **) malloc((uniq_natms) * sizeof(double*));
 		gmp_str->dX_dY[i] = (double **) malloc((uniq_natms) * sizeof(double*));
 		gmp_str->dX_dZ[i] = (double **) malloc((uniq_natms) * sizeof(double*));
@@ -477,10 +479,11 @@ void free_GMP(GMPObj *gmp_str){
         }
 
         free(gmp_str->unique_neighborList_elemWise[i]);
-        int uniq_natms = uniqueEle((gmp_str->neighborList[i]).array, gmp_str->Nneighbors[i]);
+        //int uniq_natms = uniqueEle((gmp_str->neighborList[i]).array, gmp_str->Nneighbors[i]);
+        int uniq_natms = gmp_str->unique_Nneighbors[i] + 1;
         delete_dyarray(&(gmp_str->neighborList[i]));
         delete_dyarray(&(gmp_str->unique_neighborList[i]));
-        for (int j=0; j<1+uniq_natms; j++){
+        for (int j=0; j<uniq_natms; j++){
             free(gmp_str->dX_dX[i][j]);
             free(gmp_str->dX_dY[i][j]);
             free(gmp_str->dX_dZ[i][j]);
@@ -502,7 +505,6 @@ void free_GMP(GMPObj *gmp_str){
 }
 
 void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, int nmcsh, double *atompos, int **params_i, double **params_d, double** atom_gaussian, int* ngaussians, int* element_index_to_order, int* atom_type_to_indices, int* atom_indices){
-    
     int cal_num = gmp_str->cal_num, train = 1;
     int i, j, k, N_r;
     int *cal_atoms = gmp_str->cal_atoms, *nneigh = gmp_str->Nneighbors;
@@ -607,18 +609,18 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
                         dmdy = (sum_desc * sum_dmiu_dyj[j+1]) * group_coefficient * 2.0;
                         dmdz = (sum_desc * sum_dmiu_dzj[j+1]) * group_coefficient * 2.0;
 						if (j < 0) {
-							gmp_str->dX_dX[ii][i][m] += dmdx;
-							gmp_str->dX_dY[ii][i][m] += dmdy;
-							gmp_str->dX_dZ[ii][i][m] += dmdz;
+							gmp_str->dX_dX[i][i][m] += dmdx;
+							gmp_str->dX_dY[i][i][m] += dmdy;
+							gmp_str->dX_dZ[i][i][m] += dmdz;
 						}
 						else {
-							gmp_str->dX_dX[ii][(nlist->neighborList[i]).array[j]][m] += dmdx;
-							gmp_str->dX_dY[ii][(nlist->neighborList[i]).array[j]][m] += dmdy;
-							gmp_str->dX_dZ[ii][(nlist->neighborList[i]).array[j]][m] += dmdz;
+							gmp_str->dX_dX[i][(nlist->neighborList[i]).array[j]][m] += dmdx;
+							gmp_str->dX_dY[i][(nlist->neighborList[i]).array[j]][m] += dmdy;
+							gmp_str->dX_dZ[i][(nlist->neighborList[i]).array[j]][m] += dmdz;
 						}
-                        gmp_str->dX_dX[ii][i][m] -= dmdx;
-                        gmp_str->dX_dY[ii][i][m] -= dmdy;
-                        gmp_str->dX_dZ[ii][i][m] -= dmdz;						
+                        gmp_str->dX_dX[i][i][m] -= dmdx;
+                        gmp_str->dX_dY[i][i][m] -= dmdy;
+                        gmp_str->dX_dZ[i][i][m] -= dmdz;						
                     }
 
                     free(sum_dmiu_dxj);
@@ -709,19 +711,19 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
                         dmdz = (sum_miu1 * sum_dmiu1_dzj[j+1] + sum_miu2 * sum_dmiu2_dzj[j+1] + sum_miu3 * sum_dmiu3_dzj[j+1]) * group_coefficient * 2.0;
 
                         if (j < 0) {
-							gmp_str->dX_dX[ii][i][m] += dmdx;
-							gmp_str->dX_dY[ii][i][m] += dmdy;
-							gmp_str->dX_dZ[ii][i][m] += dmdz;
+							gmp_str->dX_dX[i][i][m] += dmdx;
+							gmp_str->dX_dY[i][i][m] += dmdy;
+							gmp_str->dX_dZ[i][i][m] += dmdz;
 						}
 						else {
-							gmp_str->dX_dX[ii][(nlist->neighborList[i]).array[j]][m] += dmdx;
-							gmp_str->dX_dY[ii][(nlist->neighborList[i]).array[j]][m] += dmdy;
-							gmp_str->dX_dZ[ii][(nlist->neighborList[i]).array[j]][m] += dmdz;
+							gmp_str->dX_dX[i][(nlist->neighborList[i]).array[j]][m] += dmdx;
+							gmp_str->dX_dY[i][(nlist->neighborList[i]).array[j]][m] += dmdy;
+							gmp_str->dX_dZ[i][(nlist->neighborList[i]).array[j]][m] += dmdz;
 						}
 
-                        gmp_str->dX_dX[ii][i][m] -= dmdx;
-                        gmp_str->dX_dY[ii][i][m] -= dmdy;
-                        gmp_str->dX_dZ[ii][i][m] -= dmdz;
+                        gmp_str->dX_dX[i][i][m] -= dmdx;
+                        gmp_str->dX_dY[i][i][m] -= dmdy;
+                        gmp_str->dX_dZ[i][i][m] -= dmdz;
                     }
 
                     free(sum_dmiu1_dxj);
@@ -874,24 +876,25 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
             }
 
             if (square != 0){
-                gmp_str->X[ii][m] = sum_square;
+                gmp_str->X[i][m] = sum_square;
             }
             else {
+                // Issue is in these for loops
                 double temp = sqrt(sum_square);
                 if (abs(temp) < 1e-2){
-                    gmp_str->X[ii][m] = 0.0;
-                    for (int j = 0; j < nneigh; ++j) {
-                        gmp_str->dX_dX[ii][3*j][m] = 0.0;
-                        gmp_str->dX_dY[ii][3*j+1][m] = 0.0;
-                        gmp_str->dX_dZ[ii][3*j+2][m] = 0.0;
+                    gmp_str->X[i][m] = 0.0;
+                    for (int j = 0; j < nlist->unique_Nneighbors[i]+1; ++j) {
+                        gmp_str->dX_dX[i][j][m] = 0.0;
+                        gmp_str->dX_dY[i][j][m] = 0.0;
+                        gmp_str->dX_dZ[i][j][m] = 0.0;
                     }
                 }
                 else {
                     gmp_str->X[ii][m] = temp;
-                    for (int j=0; j < gmp_str->natom; j++){
-                        gmp_str->dX_dX[ii][3*j][m] *= 0.5/temp;
-                        gmp_str->dX_dY[ii][3*j+1][m] *= 0.5/temp;
-                        gmp_str->dX_dZ[ii][3*j+2][m] *= 0.5/temp;
+                    for (int j=0; j < nlist->unique_Nneighbors[i]+1; j++){
+                        gmp_str->dX_dX[i][j][m] *= 0.5/temp;
+                        gmp_str->dX_dY[i][j][m] *= 0.5/temp;
+                        gmp_str->dX_dZ[i][j][m] *= 0.5/temp;
                     }
                 }
             }

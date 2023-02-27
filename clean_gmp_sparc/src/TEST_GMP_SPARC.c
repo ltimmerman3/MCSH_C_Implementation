@@ -87,7 +87,7 @@ int main(int argc, char **argv){
     for (int i=0; i < gmp_str->natom; i++){
         for (int j=0; j < gmp_str->nmcsh; j++){
             fprintf(fptr,"%d,%d,%f",i,j,gmp_str->X[i][j]);
-            for (int k=0; k<gmp_str->natom; k++){
+            for (int k=0; k<nlist->unique_Nneighbors[i]; k++){
                 fprintf(fptr,",%f,%f,%f",gmp_str->dX_dX[i][k][j],gmp_str->dX_dY[i][k][j],gmp_str->dX_dZ[i][k][j]);
             }
             fprintf(fptr,"\n");

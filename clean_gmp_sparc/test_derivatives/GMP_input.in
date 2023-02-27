@@ -1,0 +1,16 @@
+# Currently, the order of inputs is also important. E.g., placing PSEUDODENSITY above N_TYPES will cause an error. 
+# Standalone will have --name to avoid SPARC dependencies and complications
+GMP: 1
+N_SIGMA: 3
+N_ANGULAR: 5
+SIGMA: 0.1000000000000   1.325  2.55    3.775   5.0
+CUTOFF: 30.0
+SQUARED: 0
+SOLID: 1
+N_TYPES: 1
+# For Multiple element systems, it is important to order the element identity, pseudodensities, and number of primitives identically
+ELEMENTS: 13
+PSEUDODENSITY: Al_pseudodensity_4.g
+N_PRIMITIVES: 4
+MAX_PRIMITIVES: 4
+FILENAME: Al
