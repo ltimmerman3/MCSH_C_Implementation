@@ -143,7 +143,7 @@ void build_nlist(const double rcut, const int nelem, const int natom, const doub
 	L3 = cell[2];
 
 	initialize_nlist(nlist, natom, rcut, nelem);
-
+    // natom_elem is indexed by atomtyp which proceeds from 0 to nelem-1. Need information on atomtyp to build neighbor list
 	for (int i=0; i<natom; i++){
 		nlist->natom_elem[atomtyp[i]] = nlist->natom_elem[atomtyp[i]] +1;
 	}
@@ -152,6 +152,7 @@ void build_nlist(const double rcut, const int nelem, const int natom, const doub
 		xi = atompos[3*i];
 		yi = atompos[3*i+1];
 		zi = atompos[3*i+2];
+        // This centers the search space around atom i - defines multipliers in pos and neg direction 
 		img_px = max(0,ceil((rcut - L1 + xi) /L1));
 		img_nx = max(0,ceil((rcut - xi) /L1));
 		img_py = max(0,ceil((rcut - L2 + yi) /L2));
@@ -160,7 +161,9 @@ void build_nlist(const double rcut, const int nelem, const int natom, const doub
 		img_nz = max(0,ceil((rcut - zi) /L3));
 		// count_neighs = 0;
 		for (j = 0; j < natom; j++){
+            // Tracks if the atom has appeared in the neighbor list before
 			int count_unique=0;
+            // Postion is a 1D array of size 3*natoms - ordered chunks of 3*Natom_type
 			xj = atompos[3*j];
 			yj = atompos[3*j+1];
 			zj = atompos[3*j+2];
@@ -170,6 +173,7 @@ void build_nlist(const double rcut, const int nelem, const int natom, const doub
 					if (abs(yj + img_y*L2 - yi) >= rcut) continue;		
 					for (img_z = -img_nz; img_z <= img_pz; img_z++){
 						if (abs(zj + img_z*L3 - zi) >= rcut) continue;
+                        // self image in fundamental unit cell
 						if ((i==j) && (img_x==0) && (img_y==0) && (img_z==0)) continue;
 						
 						dx = xj + img_x*L1 - xi;
@@ -179,6 +183,7 @@ void build_nlist(const double rcut, const int nelem, const int natom, const doub
 						if (dr >= rcut) continue;
 
 						nlist->Nneighbors[i] += 1;
+                        // Dimensions of natoms x nelem
 						nlist->Nneighbors_elemWise[i][atomtyp[j]] += 1;
 
 						
@@ -186,11 +191,8 @@ void build_nlist(const double rcut, const int nelem, const int natom, const doub
 							nlist->unique_Nneighbors[i] += 1;
 							nlist->unique_Nneighbors_elemWise[i][atomtyp[j]] += 1;
 							append_dyarray(nlist->unique_neighborList + i, j);
-							append_dyarray(&(nlist->unique_neighborList_elemWise[i][atomtyp[j]]), j);	
-							// count_neighs++;			
-						}
-						// append_dyarray(nlist->localID_neighbours + i, count_neighs-1);
-	
+							append_dyarray(&(nlist->unique_neighborList_elemWise[i][atomtyp[j]]), j);			
+						}	
 
 						append_dyarray(&(nlist->neighborList_elemWise_imgX[i][atomtyp[j]]), img_x);
 						append_dyarray(&(nlist->neighborList_elemWise_imgY[i][atomtyp[j]]), img_y);
@@ -199,12 +201,10 @@ void build_nlist(const double rcut, const int nelem, const int natom, const doub
 						append_dyarray(nlist->neighborList + i, j);
 						append_dyarray(&(nlist->neighborList_elemWise[i][atomtyp[j]]), j);
 
-
-
 						append_dyarray(nlist->neighborList_imgX + i, img_x);
 						append_dyarray(nlist->neighborList_imgY + i, img_y);
 						append_dyarray(nlist->neighborList_imgZ + i, img_z);
-
+                        // Seems like this could be a problem. Don't see the expected values - would be fine for single element systems likely
 						append_dyarray(nlist->neighborAtmTyp+i, atomtyp[j]);
 
 						count_unique++;
@@ -438,9 +438,11 @@ void initialize_gmpObj(GMPObj *gmp_str, NeighList *nlist, int *cal_atoms, int ca
 			gmp_str->X[i][sz] = 0.0;
 		}
 
-		//int uniq_natms = uniqueEle((nlist->neighborList[i]).array, nlist->Nneighbors[i]);
-        // Add 1 to account for the atom itself - can have descriptor derivative arrays of varying sizes
-        int uniq_natms = nlist->unique_Nneighbors[i] + 1;
+        // Prevents segfault when mirror image of atom_i is not in the neighbor list
+		int uniq_natms = nlist->unique_Nneighbors[i];
+        if (uniq_natms < natom) {
+            uniq_natms ++;
+        }
 		gmp_str->dX_dX[i] = (double **) malloc((uniq_natms) * sizeof(double*));
 		gmp_str->dX_dY[i] = (double **) malloc((uniq_natms) * sizeof(double*));
 		gmp_str->dX_dZ[i] = (double **) malloc((uniq_natms) * sizeof(double*));
@@ -457,7 +459,7 @@ void initialize_gmpObj(GMPObj *gmp_str, NeighList *nlist, int *cal_atoms, int ca
         }
     }
 }
-
+// need to fix memory freeing. Indexing wrong and may not be freeing all memory
 void free_GMP(GMPObj *gmp_str){
     free(gmp_str->cal_atoms);
     for (int i = 0; i < gmp_str->nmcsh; i++) free(gmp_str->params_d[i]);
@@ -468,7 +470,6 @@ void free_GMP(GMPObj *gmp_str){
     free(gmp_str->atom_gaussian);
     free(gmp_str->ngaussians);
     free(gmp_str->element_index_to_order);
-    free(gmp_str->unique_Nneighbors);
     free(gmp_str->natom_elem);
     for (int i=0; i<gmp_str->natom; i++){
         free(gmp_str->X[i]);
@@ -479,10 +480,12 @@ void free_GMP(GMPObj *gmp_str){
         }
 
         free(gmp_str->unique_neighborList_elemWise[i]);
-        //int uniq_natms = uniqueEle((gmp_str->neighborList[i]).array, gmp_str->Nneighbors[i]);
-        int uniq_natms = gmp_str->unique_Nneighbors[i] + 1;
         delete_dyarray(&(gmp_str->neighborList[i]));
         delete_dyarray(&(gmp_str->unique_neighborList[i]));
+        int uniq_natms = gmp_str->unique_Nneighbors[i];
+        if (uniq_natms < gmp_str->natom) {
+            uniq_natms ++;
+        }
         for (int j=0; j<uniq_natms; j++){
             free(gmp_str->dX_dX[i][j]);
             free(gmp_str->dX_dY[i][j]);
@@ -492,7 +495,7 @@ void free_GMP(GMPObj *gmp_str){
         free(gmp_str->dX_dY[i]);
         free(gmp_str->dX_dZ[i]);
     }
-
+    free(gmp_str->unique_Nneighbors);
     free(gmp_str->Nneighbors);
     free(gmp_str->unique_Nneighbors_elemWise);
     free(gmp_str->unique_neighborList_elemWise);
@@ -509,7 +512,7 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
     int i, j, k, N_r;
     int *cal_atoms = gmp_str->cal_atoms, *nneigh = gmp_str->Nneighbors;
     double xi, yi, zi, xj, yj, zj;
-    int *ntemp, *imgx_temp, *imgy_temp, *imgz_temp, *elemtyp_temp;
+    int *atom_nlist_temp, *imgx_temp, *imgy_temp, *imgz_temp, *elemtyp_temp;
     int idx1, idx2, idx3, idx_neigh, elem_typ, n, l, m;
     double L1, L2, L3;
     double x0,y0,z0,r0_sqr,dtheta,dphi;
@@ -520,16 +523,20 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
 	L3 = gmp_str->cell[2];
 
     for (int ii=0; ii < cal_num; ++ii) {
-        
-        i=cal_atoms[ii];       
+        // i is the index of atom being calculated - this logic is a bit more complicated than it needs to be.
+        //Index just loops from 0 - natoms - 1. Just be consistent and everything should work.
+        //i=cal_atoms[ii];       
+        i = gmp_str->cal_atoms[ii];
 		xi = atompos[3*i];
 		yi = atompos[3*i+1];
 		zi = atompos[3*i+2];
 
-		ntemp = (nlist->neighborList +i)->array;
+        // the entries of atom_nlist_temp are the indices of the atom in the fundamental unit cell
+		atom_nlist_temp = (nlist->neighborList +i)->array;
 		imgx_temp=(nlist->neighborList_imgX + i)->array;
 		imgy_temp=(nlist->neighborList_imgY + i)->array;
 		imgz_temp=(nlist->neighborList_imgZ + i)->array;
+        // This should give something from 0 for first type, 1, for second type, etc.
 		elemtyp_temp=(nlist->neighborAtmTyp +i)->array;
 	 
 
@@ -562,7 +569,10 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
                     double m_desc[1], deriv[3];
 
 
-
+                    int _count = 0;
+                    int *_indices = (int*) malloc(sizeof(int)*nneigh[i]);
+                    int _tmp;
+                    // -1 accounts for the fact that atom i in the fundamental unit cell is not included. However, it's mirror images are included.
                     for (int j = -1; j < nneigh[i]; ++j) {
 
                         int neigh_atom_element_order;
@@ -570,17 +580,28 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
                             xj = xi;
                             yj = yi;
                             zj = zi;
+                            // gives the atomic number of the atom for a given index of atom - correponds to index in .ion file. 
                             int neigh_atom_element_index = atom_indices[i];
+                            // Gives the order a given element appears in the .ion file and the primitive gaussians arrays
                             neigh_atom_element_order = element_index_to_order[neigh_atom_element_index];
-                        }
-                        else{
-                            idx_neigh = ntemp[j];
+                            _tmp = i;
+                        } else {
+                            idx_neigh = atom_nlist_temp[j];
                             elem_typ = elemtyp_temp[j];
                             xj = atompos[3*idx_neigh] + L1 * imgx_temp[j];
                             yj = atompos[3*idx_neigh+1] + L2 * imgy_temp[j];
                             zj = atompos[3*idx_neigh+2] + L3 * imgz_temp[j];
                             int neigh_atom_element_index = atom_type_to_indices[elem_typ];
                             neigh_atom_element_order = element_index_to_order[neigh_atom_element_index];
+                            if (atom_nlist_temp[j] == i){
+                                _indices[j] = 0;
+                            } else if (_tmp != atom_nlist_temp[j]) {
+                                _count += 1;
+                                _tmp = atom_nlist_temp[j];
+                                _indices[j] = _count;
+                            } else {
+                                _indices[j] = _count;
+                            }
                         }
 						
                         x0 = xj - xi;
@@ -609,18 +630,18 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
                         dmdy = (sum_desc * sum_dmiu_dyj[j+1]) * group_coefficient * 2.0;
                         dmdz = (sum_desc * sum_dmiu_dzj[j+1]) * group_coefficient * 2.0;
 						if (j < 0) {
-							gmp_str->dX_dX[i][i][m] += dmdx;
-							gmp_str->dX_dY[i][i][m] += dmdy;
-							gmp_str->dX_dZ[i][i][m] += dmdz;
+							gmp_str->dX_dX[i][0][m] += dmdx;
+							gmp_str->dX_dY[i][0][m] += dmdy;
+							gmp_str->dX_dZ[i][0][m] += dmdz;
 						}
 						else {
-							gmp_str->dX_dX[i][(nlist->neighborList[i]).array[j]][m] += dmdx;
-							gmp_str->dX_dY[i][(nlist->neighborList[i]).array[j]][m] += dmdy;
-							gmp_str->dX_dZ[i][(nlist->neighborList[i]).array[j]][m] += dmdz;
+							gmp_str->dX_dX[i][_indices[j]][m] += dmdx;
+							gmp_str->dX_dY[i][_indices[j]][m] += dmdy;
+							gmp_str->dX_dZ[i][_indices[j]][m] += dmdz;
 						}
-                        gmp_str->dX_dX[i][i][m] -= dmdx;
-                        gmp_str->dX_dY[i][i][m] -= dmdy;
-                        gmp_str->dX_dZ[i][i][m] -= dmdz;						
+                        gmp_str->dX_dX[i][0][m] -= dmdx;
+                        gmp_str->dX_dY[i][0][m] -= dmdy;
+                        gmp_str->dX_dZ[i][0][m] -= dmdz;						
                     }
 
                     free(sum_dmiu_dxj);
@@ -656,23 +677,39 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
 
                     double miu[3], deriv[9];
 
+                    int _count = 0;
+                    int *_indices = (int*) malloc(sizeof(int)*nneigh[i]);
+                    int _tmp;
+                    // -1 accounts for the fact that atom i in the fundamental unit cell is not included. However, it's mirror images are included.
                     for (int j = -1; j < nneigh[i]; ++j) {
+
                         int neigh_atom_element_order;
                         if (j < 0) {
                             xj = xi;
                             yj = yi;
                             zj = zi;
+                            // gives the atomic number of the atom for a given index of atom - correponds to index in .ion file. 
                             int neigh_atom_element_index = atom_indices[i];
+                            // Gives the order a given element appears in the .ion file and the primitive gaussians arrays
                             neigh_atom_element_order = element_index_to_order[neigh_atom_element_index];
-                        }
-                        else{
-                            idx_neigh = ntemp[j];
+                            _tmp = i;
+                        } else {
+                            idx_neigh = atom_nlist_temp[j];
                             elem_typ = elemtyp_temp[j];
                             xj = atompos[3*idx_neigh] + L1 * imgx_temp[j];
                             yj = atompos[3*idx_neigh+1] + L2 * imgy_temp[j];
                             zj = atompos[3*idx_neigh+2] + L3 * imgz_temp[j];
                             int neigh_atom_element_index = atom_type_to_indices[elem_typ];
                             neigh_atom_element_order = element_index_to_order[neigh_atom_element_index];
+                            if (atom_nlist_temp[j] == i){
+                                _indices[j] = 0;
+                            } else if (_tmp != atom_nlist_temp[j]) {
+                                _count += 1;
+                                _tmp = atom_nlist_temp[j];
+                                _indices[j] = _count;
+                            } else {
+                                _indices[j] = _count;
+                            }
                         }
 
                         x0 = xj - xi;
@@ -711,19 +748,19 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
                         dmdz = (sum_miu1 * sum_dmiu1_dzj[j+1] + sum_miu2 * sum_dmiu2_dzj[j+1] + sum_miu3 * sum_dmiu3_dzj[j+1]) * group_coefficient * 2.0;
 
                         if (j < 0) {
-							gmp_str->dX_dX[i][i][m] += dmdx;
-							gmp_str->dX_dY[i][i][m] += dmdy;
-							gmp_str->dX_dZ[i][i][m] += dmdz;
+							gmp_str->dX_dX[i][0][m] += dmdx;
+							gmp_str->dX_dY[i][0][m] += dmdy;
+							gmp_str->dX_dZ[i][0][m] += dmdz;
 						}
 						else {
-							gmp_str->dX_dX[i][(nlist->neighborList[i]).array[j]][m] += dmdx;
-							gmp_str->dX_dY[i][(nlist->neighborList[i]).array[j]][m] += dmdy;
-							gmp_str->dX_dZ[i][(nlist->neighborList[i]).array[j]][m] += dmdz;
+							gmp_str->dX_dX[i][_indices[j]][m] += dmdx;
+							gmp_str->dX_dY[i][_indices[j]][m] += dmdy;
+							gmp_str->dX_dZ[i][_indices[j]][m] += dmdz;
 						}
 
-                        gmp_str->dX_dX[i][i][m] -= dmdx;
-                        gmp_str->dX_dY[i][i][m] -= dmdy;
-                        gmp_str->dX_dZ[i][i][m] -= dmdz;
+                        gmp_str->dX_dX[i][0][m] -= dmdx;
+                        gmp_str->dX_dY[i][0][m] -= dmdy;
+                        gmp_str->dX_dZ[i][0][m] -= dmdz;
                     }
 
                     free(sum_dmiu1_dxj);
@@ -781,23 +818,39 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
 					}
 					
                     double miu[6], deriv[18];
-                    int neigh_atom_element_order;
+                    int _count = 0;
+                    int *_indices = (int*) malloc(sizeof(int)*nneigh[i]);
+                    int _tmp;
+                    // -1 accounts for the fact that atom i in the fundamental unit cell is not included. However, it's mirror images are included.
                     for (int j = -1; j < nneigh[i]; ++j) {
+
+                        int neigh_atom_element_order;
                         if (j < 0) {
                             xj = xi;
                             yj = yi;
                             zj = zi;
+                            // gives the atomic number of the atom for a given index of atom - correponds to index in .ion file. 
                             int neigh_atom_element_index = atom_indices[i];
+                            // Gives the order a given element appears in the .ion file and the primitive gaussians arrays
                             neigh_atom_element_order = element_index_to_order[neigh_atom_element_index];
-                        }
-                        else{
-                            idx_neigh = ntemp[j];
+                            _tmp = i;
+                        } else {
+                            idx_neigh = atom_nlist_temp[j];
                             elem_typ = elemtyp_temp[j];
                             xj = atompos[3*idx_neigh] + L1 * imgx_temp[j];
                             yj = atompos[3*idx_neigh+1] + L2 * imgy_temp[j];
                             zj = atompos[3*idx_neigh+2] + L3 * imgz_temp[j];
                             int neigh_atom_element_index = atom_type_to_indices[elem_typ];
                             neigh_atom_element_order = element_index_to_order[neigh_atom_element_index];
+                            if (atom_nlist_temp[j] == i){
+                                _indices[j] = 0;
+                            } else if (_tmp != atom_nlist_temp[j]) {
+                                _count += 1;
+                                _tmp = atom_nlist_temp[j];
+                                _indices[j] = _count;
+                            } else {
+                                _indices[j] = _count;
+                            }
                         }
 
                         x0 = xj - xi;
@@ -858,19 +911,19 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
                                 sum_miu5 * sum_dmiu5_dzj[j+1] + sum_miu6 * sum_dmiu6_dzj[j+1]) * group_coefficient * 2.0;
 
 						if (j < 0) {
-							gmp_str->dX_dX[i][i][m] += dmdx;
-							gmp_str->dX_dY[i][i][m] += dmdy;
-							gmp_str->dX_dZ[i][i][m] += dmdz;
+							gmp_str->dX_dX[i][0][m] += dmdx;
+							gmp_str->dX_dY[i][0][m] += dmdy;
+							gmp_str->dX_dZ[i][0][m] += dmdz;
 						}
 						else {
-							gmp_str->dX_dX[i][(nlist->neighborList[i]).array[j]][m] += dmdx;
-							gmp_str->dX_dY[i][(nlist->neighborList[i]).array[j]][m] += dmdy;
-							gmp_str->dX_dZ[i][(nlist->neighborList[i]).array[j]][m] += dmdz;
+							gmp_str->dX_dX[i][_indices[j]][m] += dmdx;
+							gmp_str->dX_dY[i][_indices[j]][m] += dmdy;
+							gmp_str->dX_dZ[i][_indices[j]][m] += dmdz;
 						}
 
-                        gmp_str->dX_dX[i][i][m] -= dmdx;
-                        gmp_str->dX_dY[i][i][m] -= dmdy;
-                        gmp_str->dX_dZ[i][i][m] -= dmdz;
+                        gmp_str->dX_dX[i][0][m] -= dmdx;
+                        gmp_str->dX_dY[i][0][m] -= dmdy;
+                        gmp_str->dX_dZ[i][0][m] -= dmdz;
 					}
                 }
             }
@@ -883,7 +936,7 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
                 double temp = sqrt(sum_square);
                 if (abs(temp) < 1e-2){
                     gmp_str->X[i][m] = 0.0;
-                    for (int j = 0; j < nlist->unique_Nneighbors[i]+1; ++j) {
+                    for (int j = 0; j < nlist->unique_Nneighbors[i]; ++j) {
                         gmp_str->dX_dX[i][j][m] = 0.0;
                         gmp_str->dX_dY[i][j][m] = 0.0;
                         gmp_str->dX_dZ[i][j][m] = 0.0;
@@ -891,7 +944,7 @@ void build_gmpObj(GMPObj *gmp_str, NeighList *nlist, FeatureScaler *ftr_scale, i
                 }
                 else {
                     gmp_str->X[ii][m] = temp;
-                    for (int j=0; j < nlist->unique_Nneighbors[i]+1; j++){
+                    for (int j=0; j < nlist->unique_Nneighbors[i]; j++){
                         gmp_str->dX_dX[i][j][m] *= 0.5/temp;
                         gmp_str->dX_dY[i][j][m] *= 0.5/temp;
                         gmp_str->dX_dZ[i][j][m] *= 0.5/temp;

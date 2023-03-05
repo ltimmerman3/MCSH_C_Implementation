@@ -54,6 +54,7 @@ int main(int argc, char **argv){
 
     int *BC = (int*)malloc(3*sizeof(int));
 	double *cell =(double *) malloc(3*sizeof(double));
+    // atomtyp is an array that contains the type of each atom in the system - current implementation requires that the atoms are ordered by type
 	int *atomtyp = (int *) malloc(read_obj->n_atom*sizeof(int));
 
 	BC[0] = read_obj->BCx; BC[1] = read_obj->BCy; BC[2] = read_obj->BCz;
@@ -110,8 +111,8 @@ void read_GMP_inpt(MLFF_Obj *mlff_str, READ_Obj *read_obj){
 	char *str            = malloc(L_STRING * sizeof(char));
     char *str_tmp = malloc(L_PSD * sizeof(char));
     char *pseudos;
-    double *params_di = (double*) malloc(sizeof(double)*4);  // why hardcode 4? Ask Lucas
-    int    *params_ii = (int*) malloc(sizeof(int)*2); ;  // why hardcode 2? Ask Lucas
+    double *params_di;  // Fixed
+    int    *params_ii = (int*) malloc(sizeof(int)*2); ;  // Ok to hard code 2. There are only ever two integer input params
     int *elem, *ngaussians;
     int nsig, nang, Ntypes, maxprim;
     Ntypes = read_obj->Ntypes;
@@ -130,6 +131,7 @@ void read_GMP_inpt(MLFF_Obj *mlff_str, READ_Obj *read_obj){
         if (strcmpi(str,"N_SIGMA:") == 0){
         	
             fscanf(input_fp,"%d",&nsig);
+            params_di = (double*) malloc(sizeof(double)*(nsig+1));
             fscanf(input_fp, "%*[^\n]\n");
         // Read number of angular probes - integer
         } else if (strcmpi(str,"N_ANGULAR:") == 0){
@@ -146,7 +148,7 @@ void read_GMP_inpt(MLFF_Obj *mlff_str, READ_Obj *read_obj){
         // Read cutoff distance - double
         } else if (strcmpi(str,"CUTOFF:") == 0) {
         	
-            fscanf(input_fp,"%lf",&params_di[3]);
+            fscanf(input_fp,"%lf",&params_di[nsig]);
             fscanf(input_fp, "%*[^\n]\n");
         // Read squared (1) or square root (0) features - int
         } else if (strcmpi(str,"SQUARED:") == 0){
@@ -217,16 +219,18 @@ void read_GMP_inpt(MLFF_Obj *mlff_str, READ_Obj *read_obj){
     // Allocate memory for GMP double params and populate 2D array
     fclose(input_fp);
     
+    // Create integer and double parameter arrays. D1 = nmcsh, D2 = 6 for double, 3 for int
+    // Allocate memory for GMP integer params and populate 2D array
     double **params_d = (double**) malloc(sizeof(double*)*nmcsh);
     for (int i = 0; i < nmcsh; i++) params_d[i] = (double*) malloc(sizeof(double)*6); // 6 is hardcoded here
     for (int i = 0; i < nang; i++){
         for (int j = 0; j < nsig; j++){
-            params_d[i*3+j][0] = sigmas[j];
-            params_d[i*3+j][1] = 1.0;
-            params_d[i*3+j][2] = pow(1/(sigmas[j]*sqrt(2.0*M_PI)),3);
-            params_d[i*3+j][3] = 1/(2*pow(sigmas[j],2));
-            params_d[i*3+j][4] = rcut;
-            params_d[i*3+j][5] = 1.0;
+            params_d[i*nsig+j][0] = sigmas[j];
+            params_d[i*nsig+j][1] = 1.0;
+            params_d[i*nsig+j][2] = pow(1/(sigmas[j]*sqrt(2.0*M_PI)),3);
+            params_d[i*nsig+j][3] = 1/(2*pow(sigmas[j],2));
+            params_d[i*nsig+j][4] = rcut;
+            params_d[i*nsig+j][5] = 1.0;
         }
     }
  	
@@ -235,9 +239,9 @@ void read_GMP_inpt(MLFF_Obj *mlff_str, READ_Obj *read_obj){
     for (int i=0; i<nmcsh; i++) params_i[i] = (int*) malloc(sizeof(int)*3);  // 3 is hardcoded here
 	for (int i = 0; i < nang; i++){
         for (int j = 0; j < nsig; j++){
-            params_i[i*3+j][0] = i;
-            params_i[i*3+j][1] = params_ii[0];
-            params_i[i*3+j][2] = params_ii[1];
+            params_i[i*nsig+j][0] = i;
+            params_i[i*nsig+j][1] = params_ii[0];
+            params_i[i*nsig+j][2] = params_ii[1];
             
         }
     }	
@@ -245,14 +249,15 @@ void read_GMP_inpt(MLFF_Obj *mlff_str, READ_Obj *read_obj){
     // Allocate memory for gaussian primitive parameters and populate array. 2D array determined by Ntypes and max number of primitives
     // Primitives read from file which at current must be in working directory
     double **atom_gaussians_p = (double**) malloc(sizeof(double*)*Ntypes);
-    for (int i=0; i<Ntypes; i++) atom_gaussians_p[i] = (double*) malloc(sizeof(double)*maxprim*2);
+    // Changed to calloc to initialize to zero
+    for (int i=0; i<Ntypes; i++) atom_gaussians_p[i] = (double*) calloc(maxprim*2,sizeof(double));
     // FILE *input_fp;
     double temp_read, temp_read1;
     for (int i=0; i<Ntypes; i++){
         // FILE *input_fp = fopen("Al_pseudodensity_4.g", "r");
         input_fp = fopen(pseudos + i*L_PSD, "r");
         printf("%s\n",pseudos + i*L_PSD);
-        if (NULL == input_fp) printf("File cannot Al_ps be opened\n");
+        if (NULL == input_fp) printf("File cannot %s be opened\n",pseudos + i*L_PSD);
         for (int j=0; j<ngaussians[i]; j++){
             // fscanf(input_fp,"%f %f",&atom_gaussians_p[i][2*j],&atom_gaussians_p[i][2*j+1]);
             fscanf(input_fp, "%lf\t%lf", &temp_read, &temp_read1);
@@ -268,8 +273,10 @@ void read_GMP_inpt(MLFF_Obj *mlff_str, READ_Obj *read_obj){
     
 
     // No change needed - 120 just corresponds to the atomic numbers for known elements with some space at beginning and end
-    int element_index_to_order[120] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-	int *element_index_to_order_p = element_index_to_order;
+    int *element_index_to_order_p = (int*) calloc(120,sizeof(int));
+    //int element_index_to_order[120] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	//int *element_index_to_order_p = element_index_to_order;
+    // Sets value at index equal to atomic number equal to the order of the element in the element array
     for (int i=0; i<Ntypes; i++) element_index_to_order_p[elem[i]] = i; 
 
     mlff_str->element_index_to_order_p = (int *)malloc(120*sizeof(int));
@@ -278,33 +285,28 @@ void read_GMP_inpt(MLFF_Obj *mlff_str, READ_Obj *read_obj){
 
 
     // Array of atomic numbers
-    // Hard coded 108 should be replaced with number of atoms from read_obj and the corresponding hard coded elemental number should be replaced 
-    int atom_indices[read_obj->n_atom];
+    int *atom_indices_p = malloc(sizeof(int)*read_obj->n_atom);
 	int count = 0;
 	for (int i=0; i < read_obj->Ntypes; i++){
 		for (int j=0; j < read_obj->nAtomv[i]; j++){
-			atom_indices[count] = elem[i];
+			atom_indices_p[count] = elem[i];
 			count++;
 		}
 	}
 
-
-    // for (int i = 0; i < 108; i ++) atom_indices[i] = 13;
-    int *atom_indices_p = atom_indices;
     // SPARC neighbor list seems to store atom type sequentially from 0. This converts SPARC atom type to atomic number.
-    // Hard coding should be altered to match SPARC's readin of .ion file. 
-    int atom_type_to_indices[read_obj->Ntypes];
+    int *atom_type_to_indices_p = malloc(sizeof(int)*read_obj->Ntypes);
     for (int i=0; i <read_obj->Ntypes; i++)
-    	atom_type_to_indices[i] = elem[i];
-    // int atom_type_to_indices[1] = {13};
-    int *atom_type_to_indices_p = atom_type_to_indices;
+        // atom_type_to_indices[i] = atomic number such that atom type  i corresponds to atomic number
+    	atom_type_to_indices_p[i] = elem[i];
+
     // Indices of atoms requiring descriptor calculation
     // This is needed for current factoring of GMP code. Hard coding should be replaced with information from read_obj object
-    int cal_atoms[read_obj->n_atom];
+    int *cal_atoms_p = malloc(sizeof(int)*read_obj->n_atom);
     for (int i = 0; i < read_obj->n_atom; i++){
-        cal_atoms[i] = i;
+        cal_atoms_p[i] = i;
     }
-    int *cal_atoms_p = cal_atoms;
+
     // Replace cal_num with read_obj information
     int cal_num = read_obj->n_atom;
 
@@ -316,7 +318,7 @@ void read_GMP_inpt(MLFF_Obj *mlff_str, READ_Obj *read_obj){
 	mlff_str->N_ANGULAR = nang;
 	mlff_str->cal_atoms = (int *)malloc(read_obj->n_atom * sizeof(int));
 	for (int i = 0; i < read_obj->n_atom; i++){
-        mlff_str->cal_atoms[i] = cal_atoms[i];
+        mlff_str->cal_atoms[i] = cal_atoms_p[i];
     }
     printf("read_obj->n_atom %d\n",read_obj->n_atom);
     mlff_str->cal_num = read_obj->n_atom;
@@ -326,9 +328,9 @@ void read_GMP_inpt(MLFF_Obj *mlff_str, READ_Obj *read_obj){
     	mlff_str->params_i[i] = (int*) malloc(sizeof(int)*3);
    	for (int i=0; i < nang; i++){
    		for (int j=0; j<nsig; j++){
-   			mlff_str->params_i[i*3+j][0] = params_i[i*3+j][0];
-            mlff_str->params_i[i*3+j][1] = params_i[i*3+j][1];
-            mlff_str->params_i[i*3+j][2] = params_i[i*3+j][2];
+   			mlff_str->params_i[i*nsig+j][0] = params_i[i*nsig+j][0];
+            mlff_str->params_i[i*nsig+j][1] = params_i[i*nsig+j][1];
+            mlff_str->params_i[i*nsig+j][2] = params_i[i*nsig+j][2];
    		}
    	}
 
@@ -337,12 +339,12 @@ void read_GMP_inpt(MLFF_Obj *mlff_str, READ_Obj *read_obj){
     	mlff_str->params_d[i] = (double*) malloc(sizeof(double)*6);
 	for (int i=0; i<nang; i++){
 		for (int j=0; j < nsig; j++){
-			mlff_str->params_d[i*3+j][0] = params_d[i*3+j][0];
-            mlff_str->params_d[i*3+j][1] = params_d[i*3+j][1];
-            mlff_str->params_d[i*3+j][2] = params_d[i*3+j][2];
-            mlff_str->params_d[i*3+j][3] = params_d[i*3+j][3];
-            mlff_str->params_d[i*3+j][4] = params_d[i*3+j][4];
-            mlff_str->params_d[i*3+j][5] = params_d[i*3+j][5];
+			mlff_str->params_d[i*nsig+j][0] = params_d[i*nsig+j][0];
+            mlff_str->params_d[i*nsig+j][1] = params_d[i*nsig+j][1];
+            mlff_str->params_d[i*nsig+j][2] = params_d[i*nsig+j][2];
+            mlff_str->params_d[i*nsig+j][3] = params_d[i*nsig+j][3];
+            mlff_str->params_d[i*nsig+j][4] = params_d[i*nsig+j][4];
+            mlff_str->params_d[i*nsig+j][5] = params_d[i*nsig+j][5];
 		}
 	}
 
