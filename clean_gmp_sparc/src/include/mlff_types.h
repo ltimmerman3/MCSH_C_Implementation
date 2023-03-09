@@ -31,7 +31,6 @@ typedef struct NeighList
   // length of fundamental unit cell
   double cell[3];
   // # of atom for each eleemnt species
-
   int* natom_elem;
   // # of neighbours for each atoms
   int* Nneighbors;
